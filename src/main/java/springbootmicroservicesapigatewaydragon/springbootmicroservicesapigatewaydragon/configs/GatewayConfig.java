@@ -1,10 +1,12 @@
 package springbootmicroservicesapigatewaydragon.springbootmicroservicesapigatewaydragon.configs;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import springbootmicroservicesapigatewaydragon.springbootmicroservicesapigatewaydragon.filters.AuthFilterPersonalizado;
 
 @Configuration
 public class GatewayConfig {
@@ -13,6 +15,8 @@ public class GatewayConfig {
      *
      * */
 
+    @Autowired
+    private AuthFilterPersonalizado authFilterPersonalizado;
 
     @Bean
     @Profile("localhost-NoEureka")
@@ -58,22 +62,34 @@ public class GatewayConfig {
                 // Especificando las paths y el nombre de la app que esta registrado en Eureka
                 .route(
                         r -> r.path("/api/v1/dragon-ball/**")
+                                .filters(f -> f.filter(this.authFilterPersonalizado))// Añadimos el filtro personalizado para verificar el token
                                 .uri("lb://dragon-ball")
                 )
                 .route(
                         r -> r.path("/api/v1/gameofthrones/**")
                                 // Añadiendo el filtro por si falla que use el failover
-                                .filters(f -> f.circuitBreaker(
-                                        c -> c.setName("failOverGameofthrones")
-                                                .setFallbackUri("forward:/api/v1/fallover/characters")) // Uri que redireccionara si falla
+                                .filters(f -> {
+                                    f.circuitBreaker(
+                                            c -> c.setName("failOverGameofthrones")
+                                                    .setFallbackUri("forward:/api/v1/fallover/characters")); // Uri que redireccionara si falla
 
-                                )
+                                    // Añadimos el filtro personalizado para verificar el
+                                    f.filter(this.authFilterPersonalizado);
+                                    return f;
+                                })
                                 .uri("lb://game-of-thrones-client2") // Si no falla cargara el microservicio
                 )
                 .route(
                         r -> r.path("/api/v1/fallover/**")
                                 .uri("lb://failover-client3")
                 )
+                .route( // regitrando la ruta de authorization
+                        r -> r.path("/auth/**")
+                                .uri("lb://microservice-auth")
+                )
+
+
+
                 .build();
     }
 
